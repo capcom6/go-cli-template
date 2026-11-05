@@ -6,16 +6,13 @@
 package commands
 
 import (
-	"github.com/capcom6/go-project-template/internal/commands/example"
-	"github.com/capcom6/go-project-template/internal/commands/serve"
-	"github.com/go-core-fx/healthfx"
+	"github.com/capcom6/go-cli-template/internal/commands/example"
 	"github.com/urfave/cli/v3"
 )
 
 // Commands returns all available CLI commands.
-func Commands(version healthfx.Version) []*cli.Command {
+func Commands() []*cli.Command {
 	return []*cli.Command{
-		serve.Command(version),
-		example.Command(version),
+		example.Command(),
 	}
 }

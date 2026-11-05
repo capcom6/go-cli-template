@@ -2,38 +2,55 @@ package internal
 
 import (
 	"context"
+	"fmt"
 	"os"
-	"os/signal"
-	"syscall"
 
-	"github.com/capcom6/go-project-template/internal/commands"
-	"github.com/go-core-fx/healthfx"
-	"github.com/samber/lo"
+	"github.com/capcom6/go-cli-template/internal/cli/codes"
+	"github.com/capcom6/go-cli-template/internal/commands"
+	logger "github.com/go-core-fx/cli-logger"
 	"github.com/urfave/cli/v3"
 )
 
-func Run(version healthfx.Version) {
+// Run builds the root CLI command and executes it.
+//
+// Commands are wired with plain constructors (no DI framework): each command
+// Action parses its flags, validates the resulting config, constructs what it
+// needs, and defers cleanup.
+func Run(ctx context.Context, log logger.Logger, version string) error {
 	app := &cli.Command{
-		Name:           "go-project-template",
-		Usage:          "Example Go project with HTTP server and Telegram bot",
-		Description:    "Example Go project with HTTP server and Telegram bot",
-		Version:        version.Version,
-		DefaultCommand: "serve",
-		Flags:          []cli.Flag{},
-		Commands:       commands.Commands(version),
-	}
+		Name:        "go-cli-template",
+		Usage:       "Opinionated Go CLI project template",
+		Description: "Opinionated Go CLI project template",
+		Version:     version,
+		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name:    "debug",
+				Usage:   "enable debug mode",
+				Sources: cli.EnvVars("DEBUG"),
+			},
+		},
+		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
+			if cmd.Bool("debug") {
+				log.SetLevel(logger.LogLevelDebug)
+			}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+			return ctx, nil
+		},
+		Commands: commands.Commands(),
+		// Unknown commands are user input errors: without this hook urfave/cli
+		// exits 3 (help.go), which collides with codes.OutputError.
+		CommandNotFound: func(_ context.Context, _ *cli.Command, name string) {
+			cli.HandleExitCoder(cli.Exit(fmt.Sprintf("No help topic for '%s'", name), codes.ParamsError))
+		},
+		Authors: []any{
+			"Aleksandr Soloshenko <i@capcom.me>",
+		},
+		Copyright: "License: Apache-2.0",
+	}
 
 	if err := app.Run(ctx, os.Args); err != nil {
-		exitCode := 1
-		if exitErr, ok := lo.ErrorsAs[cli.ExitCoder](err); ok {
-			exitCode = exitErr.ExitCode()
-		}
-
-		stop()
-		os.Exit(exitCode)
+		return fmt.Errorf("failed to run cli app: %w", err)
 	}
 
-	stop()
+	return nil
 }

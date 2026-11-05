@@ -1,10 +1,12 @@
 package example
 
+import "fmt"
+
 // Config holds the configuration for the example module.
 //
-// This struct contains all the configuration parameters needed to initialize
-// and configure the example module. Typically, these values would be loaded
-// from environment variables, configuration files, or other configuration sources.
+// Module configs are plain structs: the command layer maps CLI flags onto
+// them (internal/commands/example/config.go) and Validate is called there,
+// so invalid configuration fails before the service is constructed.
 //
 // Example:
 //
@@ -12,11 +14,20 @@ package example
 //	    Example: "demo-value",
 //	}
 //
-//	service := example.New(cfg, repo, metrics, logger)
+//	if err := cfg.Validate(); err != nil {
+//	    return err
+//	}
 type Config struct {
-	// Example is a configuration parameter that demonstrates how to include
-	// custom configuration values in the module. This could be used for
-	// feature flags, API endpoints, timeouts, or any other configurable
-	// aspect of the module.
+	// Example is the value the module echoes back. In a real module this
+	// would be feature flags, endpoints, timeouts, or similar settings.
 	Example string
+}
+
+// Validate reports whether the configuration can be used.
+func (c Config) Validate() error {
+	if c.Example == "" {
+		return fmt.Errorf("%w: example must not be empty", ErrConfigInvalid)
+	}
+
+	return nil
 }
