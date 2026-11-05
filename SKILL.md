@@ -1,4 +1,4 @@
-# Scaffolding a New Go Service from This Template
+# Scaffolding a New Go CLI from This Template
 
 ## Initial Setup
 
@@ -8,12 +8,12 @@ Two paths:
 
 **Manual** — clone and re-init:
 ```
-git clone git@github.com:capcom6/go-project-template.git <your-project>
+git clone git@github.com:capcom6/go-cli-template.git <your-project>
 cd <your-project>
 rm -rf .git
 git init
 git add .
-git commit -m "init from go-project-template"
+git commit -m "init from go-cli-template"
 ```
 
 ## Replace Placeholder Values
@@ -22,123 +22,113 @@ Search-and-replace table:
 
 | Find | Replace with |
 |---|---|
-| `github.com/capcom6/go-project-template` | `your/module/path` (in `go.mod`, all `.go` imports) |
-| binary name = dir name | used in `Makefile` `BINARY_NAME`, `.goreleaser.yaml` build |
+| `github.com/capcom6/go-cli-template` | `your/module/path` (in `go.mod`, all `.go` imports) |
+| `go-cli-template` | your binary name (root `Command.Name` in `internal/app.go`; `Makefile` derives `BINARY_NAME` from the directory name) |
 
-**`main.go`** — update swagger annotations and contact info:
-- `@title`, `@description`, `@contact.*`, `@host`, `@BasePath`
-- version globals stay; they get real values via goreleaser ldflags
+**`internal/app.go`** — update the root command:
+- `Name`, `Usage`, `Description`
+- `Authors`
 
 **`.goreleaser.yaml`** — update:
 - `DOCKER_REGISTRY` env / labels `source`, `name`
 
-**`internal/config/config.go`** — update defaults:
-- `Default()` → `HTTP.Address`, `Database.URL`, `Example.Example`
+Version globals in `main.go` stay; they get real values via goreleaser ldflags
+(`appVersion`, `appBuildDate`, `appGitCommit`).
 
-**`internal/example/metrics.go`** — change `metricsNamespace` from `"template"` to your name.
+## Remove (or Adapt) the Example Command
 
-## Remove (or Adapt) the Example Module
+1. `internal/commands/example/` — delete the directory (command + flag parsing)
+2. `internal/example/` — delete the directory (business domain)
+3. `internal/commands/commands.go` — remove `example.Command()` from the list and drop the `example` import
 
-Delete the `internal/example/` directory, then remove its wiring:
-1. `internal/commands/serve/serve.go` — remove `example.Module(true)`
-2. `internal/commands/example/example.go` — delete entire file
-3. `internal/commands/commands.go` — remove `example.Command(version)` from the list
-4. `internal/config/module.go` — remove `example.Config` mapping
-5. `internal/server/module.go` — remove example handler provide + import
-6. `internal/server/docs/docs.go` — regenerate after deleting handler (`make gen`)
+## Adding a New Command
 
-## Module Scaffold
-
-When adding a new business domain, create:
+Each command is a plain constructor — no DI framework:
 
 ```
-internal/<name>/
-├── config.go       # Config struct
-├── domain.go       # Domain entities
-├── errors.go       # Sentinel errors (Err*)
-├── models.go       # Internal data models
-├── metrics.go      # Prometheus counters via promauto
-├── repository.go   # Data access layer
-├── service.go      # Service with Run(ctx) error
-└── module.go       # fx.Module()
+internal/commands/<name>/
+├── config.go     # maps flags onto the domain Config + validation
+└── <name>.go     # Command() *cli.Command + action
 ```
 
-**`module.go`** template:
+**`<name>.go`** template:
 
 ```go
-package <name>
+// Command returns a one-shot <name> command.
+func Command() *cli.Command {
+	return &cli.Command{
+		Name:  "<name>",
+		Usage: "…",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "<flag>",
+				Usage:   "…",
+				Sources: cli.EnvVars("<NAME>__<FLAG>"),
+			},
+		},
+		Action: run,
+	}
+}
 
-import (
-    "github.com/go-core-fx/fxutil"
-    "github.com/go-core-fx/logger"
-    "go.uber.org/fx"
-)
+func run(ctx context.Context, cmd *cli.Command) error {
+	cfg, err := parseConfig(cmd)
+	if err != nil {
+		return cli.Exit(err.Error(), codes.ParamsError)
+	}
 
-func Module(withRun bool) fx.Option {
-    opts := []fx.Option{
-        logger.WithNamedLogger("<name>"),
-        fx.Provide(NewMetrics, fx.Private),
-        fx.Provide(NewRepository, fx.Private),
-        fx.Provide(New),
-    }
-    if withRun {
-        opts = append(opts, fx.Invoke(fxutil.RegisterRunnable[*Service]()))
-    }
-    return fx.Module("<name>", opts...)
+	svc := <name>.New(cfg, logger.GetLogger(ctx))
+	// … do the work …
+
+	return nil
 }
 ```
 
-**`service.go`** — constructor signature:
+Register it in `internal/commands/commands.go`:
+
 ```go
-func New(config Config, examples *Repository, metrics *Metrics, logger *zap.Logger) *Service
-```
-Implement `Run(ctx context.Context) error` for lifecycle management.
-
-**`metrics.go`** — use `promauto.NewCounter` with `Namespace`/`Subsystem` fields.
-
-### Adding HTTP Handlers
-
-```
-internal/server/handlers/<name>/
-├── dto.go        # Request/Response with `validate:"required"` tags
-└── handler.go    # Embeds handler.Base, tagged for group injection
+func Commands() []*cli.Command {
+	return []*cli.Command{
+		example.Command(),
+		<name>.Command(),
+	}
+}
 ```
 
-Handler provide in `server.Module()`:
-```go
-fx.Provide(
-    fx.Annotate(<name>.New, fx.ResultTags(`group:"handlers"`)),
-    fx.Private,
-)
-```
+### Business domain package
 
-Handler constructor must return `handler.Handler` — routes register via `h.Register(v1)` which is called automatically.
-
-### Adding Telegram Bot Handlers
+For heavier domains add `internal/<name>/`:
 
 ```
-internal/bot/handlers/<name>/handler.go
+internal/<name>/
+├── config.go     # Config struct with Validate()
+├── domain.go     # domain entities
+├── errors.go     # sentinel errors (Err*)
+└── service.go    # business logic, New(config, log)
 ```
 
-Implement the `bot/handler.Handler` interface:
-```go
-func Register(router *telegofx.Router)
-```
+- Constructor: `func New(cfg Config, log logger.Logger) *Service` — plain
+  parameters, constructed by the command layer.
+- Wrap sentinel errors with `fmt.Errorf("%w: detail", Err…)` and branch with
+  `errors.Is`.
+- See `internal/example/` for a complete reference.
 
-Add to `bot.Module()`:
-```go
-fx.Provide(
-    fx.Annotate(<name>.New, fx.ResultTags(`group:"handlers"`)),
-)
-```
+### Exit codes
 
-### Wiring Checklist
+`internal/cli/codes` defines the process exit codes:
 
-After creating files, do all three:
+| Code | Constant | Meaning |
+|---|---|---|
+| 0 | `Success` | command completed |
+| 1 | `ParamsError` | invalid flags, arguments, or configuration |
+| 2 | `ClientError` | failure caused by an external system |
+| 3 | `OutputError` | result could not be produced or written |
+| 4 | `InternalError` | unexpected internal failure |
 
-1. Add `<name>.Module(true)` to `internal/commands/serve/serve.go`
-2. Map `Config` → `<name>.Config` in `internal/config/module.go`
-3. Add handler provide (with `ResultTags`) to `server.Module()` or `bot.Module()`
+- Invalid configuration: `cli.Exit(err.Error(), codes.ParamsError)` — urfave/cli
+  exits with the code directly.
+- Usage errors from flag parsing are mapped to `ParamsError` in `main.go`
+  (`isUsageError`); everything else falls back to `InternalError`.
+- Failed writes: `cli.Exit(…, codes.OutputError)`.
 
 ## Local Development
 
@@ -149,36 +139,30 @@ make air       # live reload, requires `air` CLI: go install github.com/air-vers
 
 CLI usage:
 ```
-make build && ./bin/go-project-template              # default = serve
-./bin/go-project-template serve                      # explicit serve
-./bin/go-project-template example                    # one-shot demo
-./bin/go-project-template --help                     # list commands
+make build && ./bin/<your-binary-name> example    # one-shot demo (name = directory name)
+./bin/<your-binary-name> example --value foo      # flag (env: EXAMPLE__VALUE=foo)
+./bin/<your-binary-name> --help                   # list commands
+./bin/<your-binary-name> --version                # print version
 ```
 
-MySQL/MariaDB required for DB features. Quick start:
-```
-docker run -d --name mariadb \
-  -e MARIADB_USER=example -e MARIADB_PASSWORD=example \
-  -e MARIADB_DATABASE=example -e MARIADB_ROOT_PASSWORD=root \
-  -p 3306:3306 mariadb:11
-```
-
-Config via env vars or YAML:
-```
-export CONFIG_PATH=./config.local.yaml
-make air
-```
-
-Telegram bot token required for bot features. Set via `telegram.token` in config.
+Configuration is environment-only:
+- `.env` is loaded at startup **before** the logger is constructed, so
+  `LOG_LEVEL`, `LOG_FORMAT`, `LOG_OUTPUT`, and `NO_COLOR` from `.env` apply
+  (see `.env.example`).
+- Every flag can be fed from an environment variable via `cli.EnvVars`.
 
 ## Common Gotchas
 
-- **`exhaustruct`** — every struct literal must initialize all fields; use named field syntax, never zero-value shorthand.
-- **`gochecknoglobals`** — bans package-level `var`/`const` except build metadata (annotate with `//nolint:gochecknoglobals`).
-- **`sloglint` `no-global: all`** — `slog.SetDefault()`, `slog.Info()`, etc. are forbidden; use injected `*zap.Logger`.
-- **Swagger regeneration** — `make fmt` calls `gen` which runs `swag init`. Output at `internal/server/docs/docs.go` is auto-generated and **DO NOT EDIT**.
-- **Config mapping** — new feature configs must be added in `config/module.go` which maps the raw `Config` struct to per-module sub-configs.
-- **`-count=1`** in test command disables Go test cache. Tests always run fresh with randomized order (`-shuffle=on`).
+- **`exhaustruct`** — every struct literal must initialize all fields; use named
+  field syntax, never zero-value shorthand.
+- **`gochecknoglobals`** — bans package-level `var`/`const` except build
+  metadata (annotate with `//nolint:gochecknoglobals`).
+- **`sloglint` `no-global: all`** — global loggers are forbidden; use the
+  injected `logger.Logger` from `go-core-fx/cli-logger`.
+- **dotenv order** — keep `godotenv.Load()` before `logger.NewDefault()` in
+  `main.go`, otherwise `.env` logger settings are silently ignored.
+- **`-count=1`** in the test command disables Go test cache. Tests always run
+  fresh with randomized order (`-shuffle=on`).
 
 ## Build & Deploy
 
@@ -188,4 +172,6 @@ make release            # goreleaser snapshot (local)
 git tag v0.1.0 && git push origin v0.1.0   # triggers CI release + Docker push to ghcr.io
 ```
 
-GoReleaser builds linux/windows/darwin with `CGO_ENABLED=0`. Docker images pushed to `ghcr.io` on PR (snapshot) and version tags (release).
+GoReleaser builds linux/windows/darwin with `CGO_ENABLED=0`. Docker images are
+pushed to `ghcr.io` as `pr-<n>` tags on pull requests and version tags on
+release.

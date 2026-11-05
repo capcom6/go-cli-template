@@ -11,21 +11,21 @@
 <!-- PROJECT LOGO -->
 <br />
 <div align="center">
-  <a href="https://github.com/capcom6/go-project-template">
+  <a href="https://github.com/capcom6/go-cli-template">
     <img src="https://raw.githubusercontent.com/golang-samples/gopher-vector/master/gopher.png" alt="Logo" width="120" height="120">
   </a>
 
-<h3 align="center">go-project-template</h3>
+<h3 align="center">go-cli-template</h3>
 
   <p align="center">
-    Opinionated Go service template with Fiber API, OpenAPI docs, Telegram bot wiring, health endpoints, and Fx-based modular DI.
+    Opinionated Go CLI project template with flag-driven configuration, plain-constructor wiring, and one-shot commands.
     <br />
-    <a href="https://github.com/capcom6/go-project-template"><strong>Explore the docs »</strong></a>
+    <a href="https://github.com/capcom6/go-cli-template"><strong>Explore the docs »</strong></a>
     <br />
     <br />
-    <a href="https://github.com/capcom6/go-project-template/issues">Report Bug</a>
+    <a href="https://github.com/capcom6/go-cli-template/issues">Report Bug</a>
     ·
-    <a href="https://github.com/capcom6/go-project-template/issues">Request Feature</a>
+    <a href="https://github.com/capcom6/go-cli-template/issues">Request Feature</a>
   </p>
 </div>
 
@@ -49,15 +49,16 @@
 <!-- ABOUT THE PROJECT -->
 ## About The Project
 
-This repository is a production-oriented starter for backend services in Go. It ships with:
+This repository is a production-oriented starter for command-line tools in Go. It ships with:
 
-* HTTP server bootstrapped with Fiber and dependency injection via Uber Fx.
-* Version + health endpoints using `healthfx`.
-* Swagger/OpenAPI docs endpoint under `/api/v1/docs`.
-* Telegram bot integration (`/start` command handler included).
-* Modular business domain example with CLI commands (serve, one-shot tasks).
+* CLI shell built on [urfave/cli v3](https://github.com/urfave/cli) with a help root command, `--version`, and a `--debug` global flag.
+* Flag-driven configuration: every flag also reads from an environment variable, with an optional `.env` file loaded at startup.
+* A one-shot `example` command demonstrating plain-constructor wiring — no DI framework.
+* Typed process exit codes (`ParamsError`, `OutputError`, `InternalError`, …) with usage errors classified correctly.
+* Structured logging via [`go-core-fx/cli-logger`](https://github.com/go-core-fx/cli-logger), configured from `.env`.
+* GoReleaser-based releases: linux/windows/darwin binaries plus a container image.
 
-Use this template when you want a fast path to shipping APIs and bot workflows with a clean module layout.
+Use this template when you want a fast path to shipping CLI tools, admin tasks, migrations, or data-sync jobs with a clean layout.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -65,11 +66,9 @@ Use this template when you want a fast path to shipping APIs and bot workflows w
 ### Built With
 
 * [![Go][go-shield]][go-url]
-* [![Fiber][fiber-shield]][fiber-url]
-* [![Fx][fx-shield]][fx-url]
 * [![CLI][cli-shield]][cli-url]
-* [![Swagger][swagger-shield]][swagger-url]
-* [![Telegram][telegram-shield]][telegram-url]
+* [![GoReleaser][goreleaser-shield]][goreleaser-url]
+* [![golangci-lint][golangci-shield]][golangci-url]
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -78,7 +77,7 @@ Use this template when you want a fast path to shipping APIs and bot workflows w
 <!-- GETTING STARTED -->
 ## Getting Started
 
-Follow these steps to run the service locally.
+Follow these steps to build and run the CLI locally.
 
 ### Prerequisites
 
@@ -90,27 +89,19 @@ Follow these steps to run the service locally.
   ```sh
   golangci-lint version
   ```
-* `swag` CLI for docs generation
-  ```sh
-  go install github.com/swaggo/swag/cmd/swag@latest
-  ```
 
 ### Installation
 
 1. Clone the repo.
    ```sh
-   git clone https://github.com/capcom6/go-project-template.git
-   cd go-project-template
+   git clone https://github.com/capcom6/go-cli-template.git
+   cd go-cli-template
    ```
 2. Download dependencies.
    ```sh
    make deps
    ```
-3. (Optional) Generate OpenAPI docs.
-   ```sh
-   make gen
-   ```
-4. Build the binary.
+3. Build the binary.
    ```sh
    make build
    ```
@@ -122,7 +113,7 @@ Follow these steps to run the service locally.
 <!-- USAGE EXAMPLES -->
 ## Usage
 
-Run the server (default command):
+Run the CLI:
 
 ```sh
 go run .
@@ -137,27 +128,33 @@ make air
 CLI commands:
 
 ```sh
-go run . --help                     # list commands
-go run . serve                      # explicit serve
-go run . example                    # one-shot demo
-go run . --version                  # print version
+go run . --help                      # list commands
+go run . example                     # one-shot demo
+go run . example --value foo         # flag, or env EXAMPLE__VALUE=foo
+go run . --version                   # print version
 ```
 
-Default server address is `127.0.0.1:3000`.
+Configuration comes from flags and environment variables; an optional `.env`
+file is loaded at startup (see `.env.example`):
 
-Helpful endpoints:
+| Variable | Purpose |
+|---|---|
+| `DEBUG` | debug mode (same as `--debug`) |
+| `LOG_LEVEL` | `debug\|info\|warn\|error\|fatal` |
+| `LOG_FORMAT` | `human\|json` |
+| `LOG_OUTPUT` | `stdout\|stderr\|<file path>` |
+| `NO_COLOR` | disable colored logs |
+| `EXAMPLE__VALUE` | value for the `example` command |
 
-* Health endpoints (via `healthfx`), typically under `/health`.
-* OpenAPI docs: `http://127.0.0.1:3000/api/v1/docs`.
+Exit codes:
 
-Configuration:
-
-* Environment variables are loaded via `go-core-fx/config`.
-* You can point to a YAML file using:
-  ```sh
-  export CONFIG_PATH=./config.local.yaml
-  ```
-* Telegram token is configured via the app config (`telegram.token`) and required to use bot handlers.
+| Code | Meaning |
+|---|---|
+| 0 | success |
+| 1 | invalid flags, arguments, or configuration |
+| 2 | failure caused by an external system |
+| 3 | result could not be produced or written |
+| 4 | unexpected internal failure |
 
 Quality checks:
 
@@ -175,14 +172,12 @@ make coverage
 <!-- ROADMAP -->
 ## Roadmap
 
-- [x] Fiber API scaffold
-- [x] OpenAPI + Swagger integration
-- [x] Telegram bot wiring
-- [ ] Database module integration
-- [ ] Auth middleware and RBAC
-- [ ] CI release pipeline hardening
+- [x] CLI shell with flag-driven configuration
+- [x] Example one-shot command with plain-constructor wiring
+- [x] Typed exit codes with usage-error classification
+- [ ] Additional command templates
 
-See the [open issues](https://github.com/capcom6/go-project-template/issues) for a full list of proposed features (and known issues).
+See the [open issues](https://github.com/capcom6/go-cli-template/issues) for a full list of proposed features (and known issues).
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -220,7 +215,7 @@ Distributed under the Apache 2.0 License. See `LICENSE` for more information.
 
 Maintainer: [@capcom6](https://github.com/capcom6)
 
-Project Link: [https://github.com/capcom6/go-project-template](https://github.com/capcom6/go-project-template)
+Project Link: [https://github.com/capcom6/go-cli-template](https://github.com/capcom6/go-cli-template)
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -230,9 +225,8 @@ Project Link: [https://github.com/capcom6/go-project-template](https://github.co
 ## Acknowledgments
 
 * [Best README Template](https://github.com/othneildrew/Best-README-Template)
-* [Go Fiber](https://github.com/gofiber/fiber)
-* [Uber Fx](https://github.com/uber-go/fx)
-* [Telego](https://github.com/mymmrac/telego)
+* [urfave/cli](https://github.com/urfave/cli)
+* [GoReleaser](https://goreleaser.com)
 * [Shields.io](https://shields.io)
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
@@ -240,25 +234,21 @@ Project Link: [https://github.com/capcom6/go-project-template](https://github.co
 
 
 <!-- MARKDOWN LINKS & IMAGES -->
-[contributors-shield]: https://img.shields.io/github/contributors/capcom6/go-project-template.svg?style=for-the-badge
-[contributors-url]: https://github.com/capcom6/go-project-template/graphs/contributors
-[forks-shield]: https://img.shields.io/github/forks/capcom6/go-project-template.svg?style=for-the-badge
-[forks-url]: https://github.com/capcom6/go-project-template/network/members
-[stars-shield]: https://img.shields.io/github/stars/capcom6/go-project-template.svg?style=for-the-badge
-[stars-url]: https://github.com/capcom6/go-project-template/stargazers
-[issues-shield]: https://img.shields.io/github/issues/capcom6/go-project-template.svg?style=for-the-badge
-[issues-url]: https://github.com/capcom6/go-project-template/issues
-[license-shield]: https://img.shields.io/github/license/capcom6/go-project-template.svg?style=for-the-badge
-[license-url]: https://github.com/capcom6/go-project-template/blob/master/LICENSE
+[contributors-shield]: https://img.shields.io/github/contributors/capcom6/go-cli-template.svg?style=for-the-badge
+[contributors-url]: https://github.com/capcom6/go-cli-template/graphs/contributors
+[forks-shield]: https://img.shields.io/github/forks/capcom6/go-cli-template.svg?style=for-the-badge
+[forks-url]: https://github.com/capcom6/go-cli-template/network/members
+[stars-shield]: https://img.shields.io/github/stars/capcom6/go-cli-template.svg?style=for-the-badge
+[stars-url]: https://github.com/capcom6/go-cli-template/stargazers
+[issues-shield]: https://img.shields.io/github/issues/capcom6/go-cli-template.svg?style=for-the-badge
+[issues-url]: https://github.com/capcom6/go-cli-template/issues
+[license-shield]: https://img.shields.io/github/license/capcom6/go-cli-template.svg?style=for-the-badge
+[license-url]: https://github.com/capcom6/go-cli-template/blob/master/LICENSE
 [go-shield]: https://img.shields.io/badge/go-1.25%2B-00ADD8?style=for-the-badge&logo=go
 [go-url]: https://go.dev/
-[fiber-shield]: https://img.shields.io/badge/Fiber-v2-00b894?style=for-the-badge
-[fiber-url]: https://github.com/gofiber/fiber
-[fx-shield]: https://img.shields.io/badge/Uber%20Fx-DI-6f42c1?style=for-the-badge
-[fx-url]: https://github.com/uber-go/fx
 [cli-shield]: https://img.shields.io/badge/urfave%2Fcli-v3-00b4d8?style=for-the-badge
 [cli-url]: https://github.com/urfave/cli
-[swagger-shield]: https://img.shields.io/badge/OpenAPI-Swagger-85EA2D?style=for-the-badge
-[swagger-url]: https://github.com/swaggo/swag
-[telegram-shield]: https://img.shields.io/badge/Telegram-Bot-26A5E4?style=for-the-badge&logo=telegram
-[telegram-url]: https://core.telegram.org/bots
+[goreleaser-shield]: https://img.shields.io/badge/GoReleaser-v2-F7B42B?style=for-the-badge&logo=goreleaser&logoColor=black
+[goreleaser-url]: https://goreleaser.com
+[golangci-shield]: https://img.shields.io/badge/golangci%2Flint-v2-ED1C24?style=for-the-badge
+[golangci-url]: https://golangci-lint.run
